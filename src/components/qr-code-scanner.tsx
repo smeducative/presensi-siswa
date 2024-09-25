@@ -14,6 +14,7 @@ import ScannerControls from "./qr-code-scanner-controls";
 import { Alert, AlertDescription, AlertTitle } from "./ui/alert";
 import { AlertCircle } from "lucide-react";
 import Swal from "sweetalert2";
+import api from "@/lib/api";
 
 export default function QRCodeScanner() {
   const [scanResult, setScanResult] = useState("");
@@ -82,23 +83,54 @@ export default function QRCodeScanner() {
       setScanResult(decodedText);
       addRecentScan(decodedText);
 
-      Swal.fire({
-        icon: "success",
-        title: "Selamat Datang!!",
-        text: `Anda telah hadir di Sekolah.`,
-        // timer for 5 seconds
-        timer: 3000,
-        // auto close
-        showConfirmButton: false,
-        // no button
-      }).then(() => {
-        // resume scanning
-        resumeScanning();
-        // clear result
-        setScanResult("");
-      });
-
       pauseScanning();
+
+      api
+        .post("/api/attendance/apel/store", {
+          nis: decodedText,
+        })
+        .then((res) => {
+          if (res.status === 201) {
+            Swal.fire({
+              icon: "success",
+              title: "Selamat Datang!!",
+              text: res.data.message,
+              // timer for 5 seconds
+              timer: 3000,
+              // auto close
+              showConfirmButton: false,
+              // no button
+            }).then(() => {
+              // resume scanning
+              resumeScanning();
+              // clear result
+              setScanResult("");
+            });
+
+            console.log(res.data);
+          }
+        })
+        .catch((err) => {
+          console.log(err);
+
+          if (err.response.status === 409) {
+            Swal.fire({
+              icon: "error",
+              title: "Oops...",
+              text: err.response.data.message,
+              // timer for 5 seconds
+              timer: 3000,
+              // auto close
+              showConfirmButton: false,
+              // no button
+            }).then(() => {
+              setTimeout(() => {
+                resumeScanning();
+                setScanResult("");
+              }, 3000);
+            });
+          }
+        });
     }
   };
 
