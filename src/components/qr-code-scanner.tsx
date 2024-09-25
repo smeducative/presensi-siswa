@@ -8,20 +8,39 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import LatestScanned from "./latest-scanned";
-import type { Scan } from "./latest-scanned";
 import ScannerControls from "./qr-code-scanner-controls";
 // import ScanResult from "./qr-code-results";
 import { Alert, AlertDescription, AlertTitle } from "./ui/alert";
 import { AlertCircle } from "lucide-react";
 import Swal from "sweetalert2";
 import api from "@/lib/api";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 export default function QRCodeScanner() {
   const [scanResult, setScanResult] = useState("");
   const [error, setError] = useState("");
   const [isScanning, setIsScanning] = useState(false);
-  const [recentScans, setRecentScans] = useState<Scan[]>([]);
+  // const [recentScanssetRecentScans] = useState<Scan[]>([]);
   const scannerRef = useRef<any | null>(null);
+
+  const queryClient = useQueryClient();
+
+  const scanning = useMutation({
+    mutationFn: (result: string) => sendToServer(result),
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ["recentScans"],
+      });
+    },
+  });
+
+  const { data: recentScansData, isLoading } = useQuery({
+    queryKey: ["recentScans"],
+    queryFn: () =>
+      api
+        .get("/api/attendance/apel/latest")
+        .then((res) => res.data.attendances.data),
+  });
 
   // useEffect(() => {
   //   return () => {
@@ -30,6 +49,57 @@ export default function QRCodeScanner() {
   //     // }
   //   };
   // }, []);
+
+  const sendToServer = async (result: string) => {
+    return api
+      .post("/api/attendance/apel/store", {
+        nis: result,
+      })
+      .then((res) => {
+        if (res.status === 201) {
+          Swal.fire({
+            icon: "success",
+            title: "Selamat Datang!!",
+            text: res.data.message,
+            // timer for 5 seconds
+            timer: 3000,
+            // auto close
+            showConfirmButton: false,
+            // no button
+          }).then(() => {
+            // resume scanning
+            resumeScanning();
+            // clear result
+            setScanResult("");
+          });
+
+          console.log(res.data);
+        }
+
+        return res.data;
+      })
+      .catch((err) => {
+        console.log(err);
+
+        if (err.response.status === 409) {
+          Swal.fire({
+            icon: "error",
+            title: "Oops...",
+            text: err.response.data.message,
+            // timer for 5 seconds
+            timer: 3000,
+            // auto close
+            showConfirmButton: false,
+            // no button
+          }).then(() => {
+            setTimeout(() => {
+              resumeScanning();
+              setScanResult("");
+            }, 2000);
+          });
+        }
+      });
+  };
 
   const startScanning = async () => {
     try {
@@ -81,56 +151,11 @@ export default function QRCodeScanner() {
   const onScanSuccess = (decodedText: string) => {
     if (scanResult !== decodedText) {
       setScanResult(decodedText);
-      addRecentScan(decodedText);
+      // addRecentScan(decodedText);
 
       pauseScanning();
 
-      api
-        .post("/api/attendance/apel/store", {
-          nis: decodedText,
-        })
-        .then((res) => {
-          if (res.status === 201) {
-            Swal.fire({
-              icon: "success",
-              title: "Selamat Datang!!",
-              text: res.data.message,
-              // timer for 5 seconds
-              timer: 3000,
-              // auto close
-              showConfirmButton: false,
-              // no button
-            }).then(() => {
-              // resume scanning
-              resumeScanning();
-              // clear result
-              setScanResult("");
-            });
-
-            console.log(res.data);
-          }
-        })
-        .catch((err) => {
-          console.log(err);
-
-          if (err.response.status === 409) {
-            Swal.fire({
-              icon: "error",
-              title: "Oops...",
-              text: err.response.data.message,
-              // timer for 5 seconds
-              timer: 3000,
-              // auto close
-              showConfirmButton: false,
-              // no button
-            }).then(() => {
-              setTimeout(() => {
-                resumeScanning();
-                setScanResult("");
-              }, 3000);
-            });
-          }
-        });
+      scanning.mutate(decodedText);
     }
   };
 
@@ -139,14 +164,14 @@ export default function QRCodeScanner() {
     // Ignore scan errors
   };
 
-  const addRecentScan = (result: string) => {
-    const newScan: Scan = {
-      id: Date.now(),
-      result: result,
-      timestamp: new Date(),
-    };
-    setRecentScans((prevScans) => [newScan, ...prevScans.slice(0, 9)]);
-  };
+  // const addRecentScan = (result: string) => {
+  //   const newScan: Scan = {
+  //     id: Date.now(),
+  //     result: result,
+  //     timestamp: new Date(),
+  //   };
+  //   // setRecentScans((prevScans) => [newScan, ...prevScans.slice(0, 9)]);
+  // };
 
   return (
     <div className='mx-auto p-4 max-w-6xl container'>
@@ -186,7 +211,7 @@ export default function QRCodeScanner() {
           </CardContent>
         </Card>
 
-        <LatestScanned recentScans={recentScans} />
+        <LatestScanned recentScans={recentScansData} isLoading={isLoading} />
       </div>
     </div>
   );
