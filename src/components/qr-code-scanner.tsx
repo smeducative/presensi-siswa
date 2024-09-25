@@ -1,6 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { Html5Qrcode } from "html5-qrcode";
-import { Button } from "@/components/ui/button";
+// import { Html5Qrcode } from "html5-qrcode";
 import {
   Card,
   CardContent,
@@ -8,17 +7,19 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { AlertCircle, Camera, X } from "lucide-react";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import LatestScanned from "./latest-scanned";
 import type { Scan } from "./latest-scanned";
+import ScannerControls from "./qr-code-scanner-controls";
+import ScanResult from "./qr-code-results";
+import { Alert, AlertDescription, AlertTitle } from "./ui/alert";
+import { AlertCircle } from "lucide-react";
 
 export default function QRCodeScanner() {
   const [scanResult, setScanResult] = useState("");
   const [error, setError] = useState("");
   const [isScanning, setIsScanning] = useState(false);
   const [recentScans, setRecentScans] = useState<Scan[]>([]);
-  const scannerRef = useRef<Html5Qrcode | null>(null);
+  const scannerRef = useRef<any | null>(null);
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -35,6 +36,8 @@ export default function QRCodeScanner() {
 
   const startScanning = async () => {
     try {
+      // Dynamically import Html5Qrcode
+      const { Html5Qrcode } = await import("html5-qrcode");
       const scanner = new Html5Qrcode("reader");
       scannerRef.current = scanner;
       setIsScanning(true);
@@ -50,7 +53,7 @@ export default function QRCodeScanner() {
         onScanSuccess,
         onScanFailure
       );
-    } catch (err) {
+    } catch (err: unknown) {
       setError("Failed to start scanner. Please check camera permissions.");
       setIsScanning(false);
     }
@@ -63,21 +66,22 @@ export default function QRCodeScanner() {
         .then(() => {
           setIsScanning(false);
         })
-        .catch((err) => {
+        .catch((err: unknown) => {
           console.error("Failed to stop scanner", err);
         });
     }
   };
 
   const onScanSuccess = (decodedText: string) => {
-    setScanResult(decodedText);
-    addRecentScan(decodedText);
-    // stopScanning();
+    if (!recentScans.some((scan) => scan.result === decodedText)) {
+      setScanResult(decodedText);
+      addRecentScan(decodedText);
+    }
   };
 
-  //   @ts-ignore dont console the scan
+  // @ts-expect-error ignore for now
   const onScanFailure = (error: any) => {
-    // console.warn(`Code scan error = ${error}`);
+    // Ignore scan errors
   };
 
   const addRecentScan = (result: string) => {
@@ -88,10 +92,6 @@ export default function QRCodeScanner() {
     };
     setRecentScans((prevScans) => [newScan, ...prevScans.slice(0, 9)]);
   };
-
-  //   const clearRecentScans = () => {
-  //     setRecentScans([]);
-  //   };
 
   return (
     <div className='mx-auto p-4 max-w-6xl container'>
@@ -106,20 +106,11 @@ export default function QRCodeScanner() {
           <CardContent>
             <div id='reader' className='mb-4' style={{ width: "100%" }}></div>
 
-            {!isScanning && !scanResult && (
-              <Button onClick={startScanning} className='mb-4 w-full'>
-                <Camera className='mr-2 w-4 h-4' /> Start Scanning
-              </Button>
-            )}
-
-            {isScanning && (
-              <Button
-                onClick={stopScanning}
-                variant='destructive'
-                className='mb-4 w-full'>
-                <X className='mr-2 w-4 h-4' /> Stop Scanning
-              </Button>
-            )}
+            <ScannerControls
+              isScanning={isScanning}
+              startScanning={startScanning}
+              stopScanning={stopScanning}
+            />
 
             {error && (
               <Alert variant='destructive' className='mb-4'>
@@ -129,20 +120,13 @@ export default function QRCodeScanner() {
               </Alert>
             )}
 
-            {scanResult && (
-              <div className='bg-muted p-4 rounded-md'>
-                <h3 className='mb-2 font-semibold'>Scanned Result:</h3>
-                <p className='break-all'>{scanResult}</p>
-                <Button
-                  onClick={() => {
-                    setScanResult("");
-                    setError("");
-                  }}
-                  className='mt-4 w-full'>
-                  Scan Another Code
-                </Button>
-              </div>
-            )}
+            <ScanResult
+              scanResult={scanResult}
+              resetScan={() => {
+                setScanResult("");
+                setError("");
+              }}
+            />
           </CardContent>
         </Card>
 
