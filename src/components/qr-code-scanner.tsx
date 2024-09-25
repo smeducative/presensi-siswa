@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useRef } from "react";
 // import { Html5Qrcode } from "html5-qrcode";
 import {
   Card,
@@ -10,9 +10,10 @@ import {
 import LatestScanned from "./latest-scanned";
 import type { Scan } from "./latest-scanned";
 import ScannerControls from "./qr-code-scanner-controls";
-import ScanResult from "./qr-code-results";
+// import ScanResult from "./qr-code-results";
 import { Alert, AlertDescription, AlertTitle } from "./ui/alert";
 import { AlertCircle } from "lucide-react";
+import Swal from "sweetalert2";
 
 export default function QRCodeScanner() {
   const [scanResult, setScanResult] = useState("");
@@ -21,18 +22,13 @@ export default function QRCodeScanner() {
   const [recentScans, setRecentScans] = useState<Scan[]>([]);
   const scannerRef = useRef<any | null>(null);
 
-  useEffect(() => {
-    const interval = setInterval(() => {
-      setScanResult("");
-    }, 5000);
-
-    return () => {
-      if (scannerRef.current) {
-        scannerRef.current.clear();
-      }
-      clearInterval(interval);
-    };
-  }, []);
+  // useEffect(() => {
+  //   return () => {
+  //     // if (scannerRef.current) {
+  //     //   scannerRef.current.clear();
+  //     // }
+  //   };
+  // }, []);
 
   const startScanning = async () => {
     try {
@@ -47,7 +43,7 @@ export default function QRCodeScanner() {
       await scanner.start(
         { facingMode: "environment" },
         {
-          fps: 25,
+          fps: 15,
           qrbox: { width: 250, height: 250 },
         },
         onScanSuccess,
@@ -61,21 +57,48 @@ export default function QRCodeScanner() {
 
   const stopScanning = () => {
     if (scannerRef.current) {
-      scannerRef.current
-        .stop()
-        .then(() => {
-          setIsScanning(false);
-        })
-        .catch((err: unknown) => {
-          console.error("Failed to stop scanner", err);
-        });
+      scannerRef.current.stop().then(() => {
+        setIsScanning(false);
+      });
+    }
+  };
+
+  const pauseScanning = () => {
+    if (scannerRef.current) {
+      scannerRef.current.pause();
+      setIsScanning(false);
+    }
+  };
+
+  const resumeScanning = () => {
+    if (scannerRef.current) {
+      scannerRef.current.resume();
+      setIsScanning(true);
     }
   };
 
   const onScanSuccess = (decodedText: string) => {
-    if (!recentScans.some((scan) => scan.result === decodedText)) {
+    if (scanResult !== decodedText) {
       setScanResult(decodedText);
       addRecentScan(decodedText);
+
+      Swal.fire({
+        icon: "success",
+        title: "Selamat Datang!!",
+        text: `Anda telah hadir di Sekolah.`,
+        // timer for 5 seconds
+        timer: 3000,
+        // auto close
+        showConfirmButton: false,
+        // no button
+      }).then(() => {
+        // resume scanning
+        resumeScanning();
+        // clear result
+        setScanResult("");
+      });
+
+      pauseScanning();
     }
   };
 
@@ -120,13 +143,14 @@ export default function QRCodeScanner() {
               </Alert>
             )}
 
-            <ScanResult
+            {/* <ScanResult 
               scanResult={scanResult}
               resetScan={() => {
                 setScanResult("");
                 setError("");
               }}
             />
+                */}
           </CardContent>
         </Card>
 
