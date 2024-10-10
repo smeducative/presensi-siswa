@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 // import { Html5Qrcode } from "html5-qrcode";
 import {
   Card,
@@ -15,12 +15,24 @@ import { AlertCircle } from "lucide-react";
 import Swal from "sweetalert2";
 import api from "@/lib/api";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Label } from "./ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "./ui/select";
 
 export default function QRCodeScanner() {
   const [scanResult, setScanResult] = useState("");
   const [error, setError] = useState("");
   const [isScanning, setIsScanning] = useState(false);
   // const [recentScanssetRecentScans] = useState<Scan[]>([]);
+  const [cameras, setCameras] = useState<Array<{ id: string; label: string }>>(
+    []
+  );
+  const [selectedCamera, setSelectedCamera] = useState("");
   const scannerRef = useRef<any | null>(null);
 
   const queryClient = useQueryClient();
@@ -49,6 +61,24 @@ export default function QRCodeScanner() {
   //     // }
   //   };
   // }, []);
+
+  useEffect(() => {
+    const getCameras = async () => {
+      try {
+        const { Html5Qrcode } = await import("html5-qrcode");
+        const devices = await Html5Qrcode.getCameras();
+        if (devices && devices.length) {
+          setCameras(devices);
+          setSelectedCamera(devices[0].id);
+        }
+      } catch (err) {
+        console.error("Error getting cameras", err);
+        setError("Failed to get camera list. Please check camera permissions.");
+      }
+    };
+
+    getCameras();
+  }, []);
 
   const sendToServer = async (result: string) => {
     return api
@@ -103,12 +133,10 @@ export default function QRCodeScanner() {
 
   const startScanning = async () => {
     try {
-      // Dynamically import Html5Qrcode
       const { Html5Qrcode } = await import("html5-qrcode");
       const scanner = new Html5Qrcode("reader");
       scannerRef.current = scanner;
 
-      // cleanup
       scannerRef.current.clear();
 
       setIsScanning(true);
@@ -116,7 +144,7 @@ export default function QRCodeScanner() {
       setScanResult("");
 
       await scanner.start(
-        { facingMode: "environment" },
+        { deviceId: selectedCamera },
         {
           fps: 15,
           qrbox: { width: 250, height: 250 },
@@ -192,6 +220,24 @@ export default function QRCodeScanner() {
           <CardContent>
             <div id='reader' className='mb-4' style={{ width: "100%" }}></div>
 
+            <div className='mb-4'>
+              <Label htmlFor='camera-select'>Select Camera</Label>
+              <Select
+                value={selectedCamera}
+                onValueChange={setSelectedCamera}
+                disabled={isScanning}>
+                <SelectTrigger id='camera-select' className='w-full'>
+                  <SelectValue placeholder='Select a camera' />
+                </SelectTrigger>
+                <SelectContent>
+                  {cameras.map((camera) => (
+                    <SelectItem key={camera.id} value={camera.id}>
+                      {camera.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
             <ScannerControls
               isScanning={isScanning}
               startScanning={startScanning}
