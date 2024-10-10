@@ -1,6 +1,5 @@
-import { useState, useEffect, useRef } from "react";
-import { Html5Qrcode } from "html5-qrcode";
-import { Button } from "@/components/ui/button";
+import { useState, useRef } from "react";
+// import { Html5Qrcode } from "html5-qrcode";
 import {
   Card,
   CardContent,
@@ -8,33 +7,104 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { AlertCircle, Camera, X } from "lucide-react";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import LatestScanned from "./latest-scanned";
-import type { Scan } from "./latest-scanned";
+import ScannerControls from "./qr-code-scanner-controls";
+// import ScanResult from "./qr-code-results";
+import { Alert, AlertDescription, AlertTitle } from "./ui/alert";
+import { AlertCircle } from "lucide-react";
+import Swal from "sweetalert2";
+import api from "@/lib/api";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 export default function QRCodeScanner() {
   const [scanResult, setScanResult] = useState("");
   const [error, setError] = useState("");
   const [isScanning, setIsScanning] = useState(false);
-  const [recentScans, setRecentScans] = useState<Scan[]>([]);
-  const scannerRef = useRef<Html5Qrcode | null>(null);
+  // const [recentScanssetRecentScans] = useState<Scan[]>([]);
+  const scannerRef = useRef<any | null>(null);
 
-  useEffect(() => {
-    const interval = setInterval(() => {
-      setScanResult("");
-    }, 5000);
+  const queryClient = useQueryClient();
 
-    return () => {
-      if (scannerRef.current) {
-        scannerRef.current.clear();
-      }
-      clearInterval(interval);
-    };
-  }, []);
+  const scanning = useMutation({
+    mutationFn: (result: string) => sendToServer(result),
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ["recentScans"],
+      });
+    },
+  });
+
+  const { data: recentScansData, isLoading } = useQuery({
+    queryKey: ["recentScans"],
+    queryFn: () =>
+      api
+        .get("/api/attendance/apel/latest")
+        .then((res) => res.data.attendances.data),
+  });
+
+  // useEffect(() => {
+  //   return () => {
+  //     // if (scannerRef.current) {
+  //     //   scannerRef.current.clear();
+  //     // }
+  //   };
+  // }, []);
+
+  const sendToServer = async (result: string) => {
+    return api
+      .post("/api/attendance/apel/store", {
+        nis: result,
+      })
+      .then((res) => {
+        if (res.status === 201) {
+          Swal.fire({
+            icon: "success",
+            title: "Selamat Datang!!",
+            text: res.data.message,
+            // timer for 5 seconds
+            timer: 3000,
+            // auto close
+            showConfirmButton: false,
+            // no button
+          }).then(() => {
+            // resume scanning
+            resumeScanning();
+            // clear result
+            setScanResult("");
+          });
+
+          console.log(res.data);
+        }
+
+        return res.data;
+      })
+      .catch((err) => {
+        console.log(err);
+
+        if (err.response.status === 409) {
+          Swal.fire({
+            icon: "error",
+            title: "Oops...",
+            text: err.response.data.message,
+            // timer for 5 seconds
+            timer: 3000,
+            // auto close
+            showConfirmButton: false,
+            // no button
+          }).then(() => {
+            setTimeout(() => {
+              resumeScanning();
+              setScanResult("");
+            }, 2000);
+          });
+        }
+      });
+  };
 
   const startScanning = async () => {
     try {
+      // Dynamically import Html5Qrcode
+      const { Html5Qrcode } = await import("html5-qrcode");
       const scanner = new Html5Qrcode("reader");
       scannerRef.current = scanner;
       setIsScanning(true);
@@ -44,13 +114,13 @@ export default function QRCodeScanner() {
       await scanner.start(
         { facingMode: "environment" },
         {
-          fps: 25,
+          fps: 15,
           qrbox: { width: 250, height: 250 },
         },
         onScanSuccess,
         onScanFailure
       );
-    } catch (err) {
+    } catch (err: unknown) {
       setError("Failed to start scanner. Please check camera permissions.");
       setIsScanning(false);
     }
@@ -58,40 +128,50 @@ export default function QRCodeScanner() {
 
   const stopScanning = () => {
     if (scannerRef.current) {
-      scannerRef.current
-        .stop()
-        .then(() => {
-          setIsScanning(false);
-        })
-        .catch((err) => {
-          console.error("Failed to stop scanner", err);
-        });
+      scannerRef.current.stop().then(() => {
+        setIsScanning(false);
+      });
+    }
+  };
+
+  const pauseScanning = () => {
+    if (scannerRef.current) {
+      scannerRef.current.pause();
+      setIsScanning(false);
+    }
+  };
+
+  const resumeScanning = () => {
+    if (scannerRef.current) {
+      scannerRef.current.resume();
+      setIsScanning(true);
     }
   };
 
   const onScanSuccess = (decodedText: string) => {
-    setScanResult(decodedText);
-    addRecentScan(decodedText);
-    // stopScanning();
+    if (scanResult !== decodedText) {
+      setScanResult(decodedText);
+      // addRecentScan(decodedText);
+
+      pauseScanning();
+
+      scanning.mutate(decodedText);
+    }
   };
 
-  //   @ts-ignore dont console the scan
+  // @ts-expect-error ignore for now
   const onScanFailure = (error: any) => {
-    // console.warn(`Code scan error = ${error}`);
+    // Ignore scan errors
   };
 
-  const addRecentScan = (result: string) => {
-    const newScan: Scan = {
-      id: Date.now(),
-      result: result,
-      timestamp: new Date(),
-    };
-    setRecentScans((prevScans) => [newScan, ...prevScans.slice(0, 9)]);
-  };
-
-  //   const clearRecentScans = () => {
-  //     setRecentScans([]);
+  // const addRecentScan = (result: string) => {
+  //   const newScan: Scan = {
+  //     id: Date.now(),
+  //     result: result,
+  //     timestamp: new Date(),
   //   };
+  //   // setRecentScans((prevScans) => [newScan, ...prevScans.slice(0, 9)]);
+  // };
 
   return (
     <div className='mx-auto p-4 max-w-6xl container'>
@@ -106,20 +186,11 @@ export default function QRCodeScanner() {
           <CardContent>
             <div id='reader' className='mb-4' style={{ width: "100%" }}></div>
 
-            {!isScanning && !scanResult && (
-              <Button onClick={startScanning} className='mb-4 w-full'>
-                <Camera className='mr-2 w-4 h-4' /> Start Scanning
-              </Button>
-            )}
-
-            {isScanning && (
-              <Button
-                onClick={stopScanning}
-                variant='destructive'
-                className='mb-4 w-full'>
-                <X className='mr-2 w-4 h-4' /> Stop Scanning
-              </Button>
-            )}
+            <ScannerControls
+              isScanning={isScanning}
+              startScanning={startScanning}
+              stopScanning={stopScanning}
+            />
 
             {error && (
               <Alert variant='destructive' className='mb-4'>
@@ -129,24 +200,18 @@ export default function QRCodeScanner() {
               </Alert>
             )}
 
-            {scanResult && (
-              <div className='bg-muted p-4 rounded-md'>
-                <h3 className='mb-2 font-semibold'>Scanned Result:</h3>
-                <p className='break-all'>{scanResult}</p>
-                <Button
-                  onClick={() => {
-                    setScanResult("");
-                    setError("");
-                  }}
-                  className='mt-4 w-full'>
-                  Scan Another Code
-                </Button>
-              </div>
-            )}
+            {/* <ScanResult 
+              scanResult={scanResult}
+              resetScan={() => {
+                setScanResult("");
+                setError("");
+              }}
+            />
+                */}
           </CardContent>
         </Card>
 
-        <LatestScanned recentScans={recentScans} />
+        <LatestScanned recentScans={recentScansData} isLoading={isLoading} />
       </div>
     </div>
   );
