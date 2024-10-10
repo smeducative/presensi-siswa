@@ -121,7 +121,9 @@ export default function QRCodeScanner() {
         onScanFailure
       );
     } catch (err: unknown) {
-      setError("Failed to start scanner. Please check camera permissions.");
+      setError(
+        "Failed to start scanner. Please check camera permissions." + err
+      );
       setIsScanning(false);
     }
   };
