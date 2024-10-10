@@ -107,6 +107,10 @@ export default function QRCodeScanner() {
       const { Html5Qrcode } = await import("html5-qrcode");
       const scanner = new Html5Qrcode("reader");
       scannerRef.current = scanner;
+
+      // cleanup
+      scannerRef.current.clear();
+
       setIsScanning(true);
       setError("");
       setScanResult("");
